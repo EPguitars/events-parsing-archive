@@ -1,13 +1,14 @@
 """ API """
 from fastapi import FastAPI
 
-from scraper import scrape_website
+from standalone.scraper_visityerevan import scrape_website
 
 
 app = FastAPI()
-data = scrape_website()
+
 
 @app.get('/')
 def get_events():
-    
+    """ returns json with data from visityerevan """
+    data = scrape_website()
     return {"data": data}
