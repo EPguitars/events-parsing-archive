@@ -8,7 +8,7 @@ app = FastAPI()
 
 
 @app.get('/api/standalone/visityerevan')
-def get_events():
+async def get_events():
     """ returns json with data from visityerevan """
-    data = scrape_website()
+    data = await scrape_website()
     return {"data": data}

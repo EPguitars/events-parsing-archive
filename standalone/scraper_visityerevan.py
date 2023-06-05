@@ -36,8 +36,6 @@ class Response:
 def serialize_event(event):
     """ Resulting format for each event """
     return {
-        "status": "success",
-        "data": {
             "id": "work in progress...",
             "type": "parsed_v1",
             "parserName": "visityerevan",
@@ -57,7 +55,7 @@ def serialize_event(event):
             },
             "url": event.url_to_original,
         }
-    }
+
 
 
 def get_page(client: Client, url: str) -> Response:
@@ -149,7 +147,7 @@ def pagination_loop(client: Client) -> list:
     return blocks
 
 
-def scrape_website() -> list:
+async def scrape_website() -> list:
     """ Main function which contains all logic """
     # Start a new session
     client = Client()
