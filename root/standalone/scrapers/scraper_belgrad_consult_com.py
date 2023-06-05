@@ -26,7 +26,7 @@ async def get_page() -> str:
 
     try:
         cnt = 0
-        while True and cnt < 100:
+        while cnt < 100:
             cnt += 1
             try:
                 button.click()
