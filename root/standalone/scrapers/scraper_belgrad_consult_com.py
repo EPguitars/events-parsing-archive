@@ -25,7 +25,9 @@ async def get_page() -> str:
     )
 
     try:
-        while True:
+        cnt = 0
+        while True and cnt < 100:
+            cnt += 1
             try:
                 button.click()
             except ElementClickInterceptedException:
@@ -93,8 +95,8 @@ def parse_block(block: Node) -> dict:
         "time": time,
         "durationInSeconds": 0,
         "location": {
-            "country": "Сербия",
-            "city": "Белград",
+            "country": "Serbia",
+            "city": "Belgrade",
         },
         "image": img,
         "price": None,
