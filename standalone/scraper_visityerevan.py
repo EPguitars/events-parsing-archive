@@ -8,7 +8,12 @@ from urllib.parse import urljoin
 from httpx import Client
 from selectolax.parser import HTMLParser, Node
 # uncomment if your want to use "smart" print (needs "rich" package be installed)
-#from rich import print
+# from rich import print
+
+
+HEADERS = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) " +
+           "AppleWebKit/537.36 (KHTML, like Gecko) " +
+           "Chrome/109.0.0.0 Safari/537.36"}
 
 
 @dataclass
@@ -25,24 +30,60 @@ class Response:
     """ Class contains html of page and info about existing of the next page """
     body_html: HTMLParser
     next_page: dict
+    status_code: int
+
+
+def serialize_event(event):
+    """ Resulting format for each event """
+    return {
+        "status": "success",
+        "data": {
+            "id": "work in progress...",
+            "type": "parsed_v1",
+            "parserName": "visityerevan",
+            "title": event.title,
+            "description": event.description,
+            "date": event.time,
+            "durationInSeconds": 0,
+            "location": {
+                "country": "Armenia",
+                "city": "Erevan",
+            },
+            "image": "work in progress...",
+            "price": 0,
+            "timezone": {
+                "timezoneName": "AMT",
+                "timezoneOffset": "UTC +4",
+            },
+            "url": event.url_to_original,
+        }
+    }
 
 
 def get_page(client: Client, url: str) -> Response:
     """ Scrape html from page and check if next pages appears """
-    headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) " +
-               "AppleWebKit/537.36 (KHTML, like Gecko) " +
-               "Chrome/109.0.0.0 Safari/537.36"}
-    resp = client.get(url, headers=headers)
+    resp = client.get(url, headers=HEADERS)
+
     html = HTMLParser(resp.text)
 
     # Here we checking if next page appears or not
     if html.css_first("span[class='fas fa-angle-right']"):
         next_page = True
-
     else:
         next_page = False
 
-    return Response(body_html=html, next_page=next_page)
+    return Response(body_html=html, next_page=next_page, status_code=resp.status_code)
+
+
+def get_pages_amount(client: Client, url: str) -> int:
+    """ func to get number of pages with events """
+    resp = client.get(url, headers=HEADERS)
+    html = HTMLParser(resp.text)
+
+    pages_amount = html.css("ul[class='pagination justify-content-center'] >" +
+                            "li[class='page-item']")[-1:][0].text()
+
+    return int(pages_amount)
 
 
 def parse_detail(blocks: list) -> list:
@@ -73,40 +114,37 @@ def parse_detail(blocks: list) -> list:
             time=cleaned_time
         )
 
-        result.append({"title": event.title,
-                       "description": event.description,
-                       "url_to_original": event.url_to_original,
-                       "time": event.time})
+        result.append(serialize_event(event))
 
     return result
 
 
 def scrape_blocks(html: HTMLParser) -> list:
     """ Getting all divs with information from page """
-    links = html.css("div[class='row px-lg-7']" +
-                     " > div")
+    blocks = html.css("div[class='row px-lg-7']" +
+                      " > div")
 
-    return [link for link in links]
+    return blocks
 
 
 def pagination_loop(client: Client) -> list:
     """ Loop through all pages """
     url = "https://www.visityerevan.am/browse/things-to-do-events/ru/"
-    # Counter represents number of page
-    counter = 1
+    # How many pages we will scrape
+    pages_amount = get_pages_amount(client, url)
     # Blocks contains all divs that we need
     blocks = []
-
-    while True:
+    # Iterating through all pages
+    for page_number in range(1, pages_amount + 1):
+        # Mutating a url to get page with current page number
+        url = urljoin(url, f"?sel_filters=&current_page={page_number}")
+        # Get object with scraped html markup from current page
         page = get_page(client, url)
+        # Grad all divs with events data and append to list
         blocks += scrape_blocks(page.body_html)
 
-        if page.next_page is False:
-            client.close()
-            break
-        else:
-            counter += 1
-            url = urljoin(url, f"?sel_filters=&current_page={counter}")
+    # Scraping is done, time to close session
+    client.close()
 
     return blocks
 
