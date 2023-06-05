@@ -2,6 +2,10 @@
 """
 Main goal of this module is to scrape and parse data from "visityerevan.am" website
 """
+import asyncio
+import logging
+import sys
+
 from dataclasses import dataclass
 from urllib.parse import urljoin
 
@@ -10,6 +14,13 @@ from selectolax.parser import HTMLParser, Node
 # uncomment if your want to use "smart" print (needs "rich" package be installed)
 # from rich import print
 
+logger = logging.getLogger(__name__)
+logging.basicConfig(level=logging.WARNING)
+stream_handler = logging.StreamHandler(sys.stdout)
+formatter = logging.Formatter(
+    "[%(asctime)s] %(levelname)s:%(name)s:%(lineno)d:%(message)s")
+stream_handler.setFormatter(formatter)
+logger.addHandler(stream_handler)
 
 HEADERS = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) " +
            "AppleWebKit/537.36 (KHTML, like Gecko) " +
@@ -23,6 +34,7 @@ class Event:
     description: str
     url_to_original: str
     time: str
+    price: str
 
 
 @dataclass
@@ -36,26 +48,28 @@ class Response:
 def serialize_event(event):
     """ Resulting format for each event """
     return {
-            "id": "work in progress...",
-            "type": "parsed_v1",
-            "parserName": "visityerevan",
-            "title": event.title,
-            "description": event.description,
-            "date": event.time,
-            "durationInSeconds": 0,
-            "location": {
+        "id": "work in progress...",
+        "type": "parsed_v1",
+        "parserName": "visityerevan",
+        "title": event.title,
+        "description": event.description,
+        "date": event.time,
+        "durationInSeconds": 0,
+        "location": {
                 "country": "Armenia",
                 "city": "Erevan",
-            },
-            "image": "work in progress...",
-            "price": 0,
-            "timezone": {
-                "timezoneName": "AMT",
-                "timezoneOffset": "UTC +4",
-            },
-            "url": event.url_to_original,
-        }
-
+        },
+        "image": "work in progress...",
+        "price": {
+            "amount": event.price,
+            "currency": "AMD"
+        },
+        "timezone": {
+            "timezoneName": "AMT",
+            "timezoneOffset": "UTC +4",
+        },
+        "url": event.url_to_original,
+    }
 
 
 def get_page(client: Client, url: str) -> Response:
@@ -84,32 +98,70 @@ def get_pages_amount(client: Client, url: str) -> int:
     return int(pages_amount)
 
 
+def is_valid(data):
+    """ Helps us to catch website's structure changes """
+    if data is None:
+        logger.warning(
+            "Seems that website changed structure. Please recheck code and website")
+        return False
+    else:
+        return True
+
+
 def parse_detail(blocks: list) -> list:
     """ Clean and prepare all data that we need """
     result = []
 
+    # In this loop we will extract all
+    #  Info that we can from each event's div
     for block in blocks:
-        # Clean and prepare "time"
+        # Extract and prepare "time"
         month_day = block.css_first(
-            "div[class='col-12 mt-n1'] > div").text().replace('\n', '').strip()
+            "div[class='col-12 mt-n1'] > div")
+        # Need validate data each parsing attempt
+        if is_valid(month_day):
+            month_day = month_day.text().replace('\n', '').strip()
+
         time = block.css_first(
-            "div[class='text-grey text-md mb-2']").text().replace('\n', '').strip().split(' ')
-        cleaned_time = f"{month_day} {time[-1:][0]}"
+            "div[class='text-grey text-md mb-2']")
 
-        # Clean and prepare "description"
-        cleaned_description = block.css_first("p").text().strip()
+        if is_valid(time):
+            time = time.text().replace('\n', '').strip().split(' ')
+            cleaned_time = f"{month_day} {time[-1:][0]}"
+        else:
+            cleaned_time = None
+        # Extracted and prepare "description"
+        cleaned_description = block.css_first("p")
 
+        if is_valid(cleaned_description):
+            cleaned_description = cleaned_description.text().strip()
         # Clean and prepare "url"
-        cleaned_url = "https://www.visityerevan.am" + \
-            block.css_first("a").attrs["href"]
+        cleaned_url = block.css_first("a").attrs["href"]
 
+        if is_valid(cleaned_url):
+            cleaned_url = "https://www.visityerevan.am" + cleaned_url
+        # Extract price
+        price = ''
+        cards = block.css("p.card-text > span")
+
+        if len(cards) == 0:
+            logger.warning(
+                "Seems that website changed structure. Please recheck code and website")
+
+        for card in cards:
+            card = card.text()
+            if "AMD" in card:
+                price = card.replace("AMD", "").strip()
+            else:
+                price = "no info"
         # There is not need in cleaning "title"
         # With data we have create a new event object
         event = Event(
             title=block.css_first("h5").text(),
             description=cleaned_description,
             url_to_original=cleaned_url,
-            time=cleaned_time
+            time=cleaned_time,
+            price=price
         )
 
         result.append(serialize_event(event))
@@ -157,3 +209,5 @@ async def scrape_website() -> list:
     parsed_data = parse_detail(all_blocks)
 
     return parsed_data
+
+# asyncio.run(scrape_website())
