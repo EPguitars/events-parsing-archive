@@ -40,7 +40,6 @@ class Event:
 class Response:
     """ Class contains html of page and info about existing of the next page """
     body_html: HTMLParser
-    next_page: bool
     status_code: int
 
 
@@ -74,13 +73,9 @@ def serialize_event(event):
 def get_page(client: Client, url: str) -> Response:
     """ Scrape html from page and check if next pages appears """
     resp = client.get(url, headers=HEADERS)
-
     html = HTMLParser(resp.text)
 
-    # Here we checking if next page appears or not
-    next_page = html.css_first("span[class='fas fa-angle-right']") is not None
-
-    return Response(body_html=html, next_page=next_page, status_code=resp.status_code)
+    return Response(body_html=html, status_code=resp.status_code)
 
 
 def get_pages_amount(client: Client, url: str) -> int:
@@ -156,7 +151,6 @@ def parse_detail(blocks: list) -> list:
             img = "https://www.visityerevan.am" + img
         # There is not need in cleaning "title"
         # With data we have create a new event object
-        print(cleaned_time)
         event = Event(
             title=block.css_first("h5").text(),
             description=description,
