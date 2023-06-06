@@ -2,7 +2,6 @@
 """
 Main goal of this module is to scrape and parse data from "visityerevan.am" website
 """
-import asyncio
 import logging
 import sys
 
@@ -11,8 +10,7 @@ from urllib.parse import urljoin
 
 from httpx import Client
 from selectolax.parser import HTMLParser, Node
-# uncomment if your want to use "smart" print (needs "rich" package be installed)
-# from rich import print
+
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.WARNING)
@@ -35,13 +33,14 @@ class Event:
     url_to_original: str
     time: str
     price: str
+    img: str
 
 
 @dataclass
 class Response:
     """ Class contains html of page and info about existing of the next page """
     body_html: HTMLParser
-    next_page: dict
+    next_page: bool
     status_code: int
 
 
@@ -59,7 +58,7 @@ def serialize_event(event):
                 "country": "Armenia",
                 "city": "Erevan",
         },
-        "image": "work in progress...",
+        "image": event.img,
         "price": {
             "amount": event.price,
             "currency": "AMD"
@@ -79,10 +78,7 @@ def get_page(client: Client, url: str) -> Response:
     html = HTMLParser(resp.text)
 
     # Here we checking if next page appears or not
-    if html.css_first("span[class='fas fa-angle-right']"):
-        next_page = True
-    else:
-        next_page = False
+    next_page = html.css_first("span[class='fas fa-angle-right']") is not None
 
     return Response(body_html=html, next_page=next_page, status_code=resp.status_code)
 
@@ -103,6 +99,7 @@ def is_valid(data):
     if data is None:
         logger.warning(
             "Seems that website changed structure. Please recheck code and website")
+
         return False
     else:
         return True
@@ -130,16 +127,14 @@ def parse_detail(blocks: list) -> list:
             cleaned_time = f"{month_day} {time[-1:][0]}"
         else:
             cleaned_time = None
-        # Extracted and prepare "description"
-        cleaned_description = block.css_first("p")
-
-        if is_valid(cleaned_description):
-            cleaned_description = cleaned_description.text().strip()
+        # Extract and prepare "description"
+        description = block.css_first("p")
+        if is_valid(description):
+            description = description.text().strip()
         # Clean and prepare "url"
-        cleaned_url = block.css_first("a").attrs["href"]
-
-        if is_valid(cleaned_url):
-            cleaned_url = "https://www.visityerevan.am" + cleaned_url
+        url = block.css_first("a").attrs["href"]
+        if is_valid(url):
+            url = "https://www.visityerevan.am" + url
         # Extract price
         price = ''
         cards = block.css("p.card-text > span")
@@ -147,21 +142,28 @@ def parse_detail(blocks: list) -> list:
         if len(cards) == 0:
             logger.warning(
                 "Seems that website changed structure. Please recheck code and website")
+        else:
+            for card in cards:
+                card = card.text()
+                if "AMD" in card:
+                    price = card.replace("AMD", "").strip()
+                else:
+                    price = "no info"
+        # Extract img link
+        img = block.css_first("img").attrs["src"]
 
-        for card in cards:
-            card = card.text()
-            if "AMD" in card:
-                price = card.replace("AMD", "").strip()
-            else:
-                price = "no info"
+        if is_valid(img):
+            img = "https://www.visityerevan.am" + img
         # There is not need in cleaning "title"
         # With data we have create a new event object
+        print(cleaned_time)
         event = Event(
             title=block.css_first("h5").text(),
-            description=cleaned_description,
-            url_to_original=cleaned_url,
+            description=description,
+            url_to_original=url,
             time=cleaned_time,
-            price=price
+            price=price,
+            img=img
         )
 
         result.append(serialize_event(event))
@@ -209,5 +211,3 @@ async def scrape_website() -> list:
     parsed_data = parse_detail(all_blocks)
 
     return parsed_data
-
-# asyncio.run(scrape_website())
